@@ -1,0 +1,154 @@
+# =========================================================
+# ENVIRONMENT & SECRETS
+# =========================================================
+
+.env
+.env.*
+!.env.example
+.env.local
+
+# =========================================================
+# NODE / REACT
+# =========================================================
+
+node_modules/
+frontend/node_modules/
+
+# =========================================================
+# BUILD OUTPUT
+# =========================================================
+
+dist/
+frontend/dist/
+
+build/
+frontend/build/
+
+coverage/
+
+# =========================================================
+# VITE / FRONTEND CACHE
+# =========================================================
+
+.vite/
+frontend/.vite/
+
+.cache/
+frontend/.cache/
+
+.parcel-cache/
+
+# =========================================================
+# PYTHON
+# =========================================================
+
+.venv/
+venv/
+env/
+
+__pycache__/
+**/__pycache__/
+
+*.py[cod]
+*.pyo
+*.pyd
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# =========================================================
+# LOCAL BACKUPS
+# =========================================================
+
+backend_backup_before_mongodb/
+
+# =========================================================
+# TEMPORARY / GENERATED DATA
+# =========================================================
+
+temp_*.json
+temp_*.csv
+temp_*.txt
+*.tmp
+*.temp
+
+# =========================================================
+# LOGS
+# =========================================================
+
+*.log
+*.log.*
+
+# =========================================================
+# IDE / EDITOR
+# =========================================================
+
+.vscode/
+.idea/
+
+# =========================================================
+# OPERATING SYSTEM
+# =========================================================
+
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =========================================================
+# GENERATED / CACHE FILES
+# =========================================================
+
+*.cache
+*.map
+
+# =========================================================
+# FRONTEND LOCAL ENVIRONMENT FILES
+# =========================================================
+
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+
+# =========================================================
+# LOCAL DATABASE / DATA EXPORTS
+# =========================================================
+
+*.sqlite
+*.sqlite3
+*.db
+
+# =========================================================
+# TEST OUTPUT / REPORTS
+# =========================================================
+
+test-results/
+playwright-report/
+
+# =========================================================
+# EDITOR / TOOL TEMP FILES
+# =========================================================
+
+*.swp
+*.swo
+*.bak
+
+# Local backup copies
+**/*_backup.py
+
+# Bun lockfile - project uses npm
+frontend/bun.lock
+
+# Remediation artifacts (do not commit)
+auth-temporary-credentials.txt
+**/auth-temporary-credentials.txt
+*.credentials
+*.credentials.txt
+*.secret
+*.secrets
+**/user_accounts_metadata_backup_*.json
+
+# Vercel local project config
+.vercel/
+

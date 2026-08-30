@@ -1,0 +1,7 @@
+HTTP/1.1 200 OK
+date: Sat, 22 Aug 2026 08:02:29 GMT
+server: uvicorn
+content-length: 670
+content-type: application/json
+
+{"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJFTVAwMDAwMTAiLCJlbXBJZCI6IkVNUDAwMDAxMCIsIm1hbmFnZXJMb2dpbklkIjoiTUdSMDAwMDAxIiwiZW1haWwiOiJhc2h3aW4uam9zaGkuMTBAY29tcGFueS5jb20iLCJuYW1lIjoiQXNod2luIEEuIEpvc2hpIiwicm9sZSI6Ik1BTkFHRVIiLCJkZXBhcnRtZW50IjpudWxsLCJqdGkiOiJiMzU3NWQ5NS1jZmMyLTQ2MzEtOGJkYy04NWQ1NjY5YTdmMzEiLCJpYXQiOjE3ODczODU3NTMuNDM5Njg0LCJleHAiOjE3ODczODkzNTMuNDM5Njg0fQ.hDcjI3vjYJikBQH6O6aIOMWeW5EmBXdTP-xGy2ohU6s","user":{"userId":"EMP000010","empId":"EMP000010","managerLoginId":"MGR000001","name":"Ashwin A. Joshi","email":"ashwin.joshi.10@company.com","role":"MANAGER","department":null,"passwordStatus":"default","mustChangePassword":false}}

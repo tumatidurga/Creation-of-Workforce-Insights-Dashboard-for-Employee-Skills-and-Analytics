@@ -1,0 +1,263 @@
+[
+  {
+    "id": "new-years-day-2026",
+    "name": "New Year's Day",
+    "date": "2026-01-01",
+    "type": "national",
+    "isOptional": false,
+    "isWorkingDayOverride": false,
+    "description": "National holiday for the beginning of the calendar year."
+  },
+  {
+    "id": "makar-sankranti-pongal-2026",
+    "name": "Makar Sankranti / Pongal",
+    "date": "2026-01-14",
+    "type": "company",
+    "isOptional": false,
+    "isWorkingDayOverride": false,
+    "description": "Company-recognized regional harvest festival depending on organizational policy."
+  },
+  {
+    "id": "republic-day-2026",
+    "name": "Republic Day",
+    "date": "2026-01-26",
+    "type": "national",
+    "isOptional": false,
+    "isWorkingDayOverride": false,
+    "description": "India's Republic Day celebration."
+  },
+  {
+    "id": "milad-un-nabi-2026",
+    "name": "Milad-un-Nabi / Eid-e-Milad",
+    "date": "2026-02-19",
+    "type": "public",
+    "isOptional": false,
+    "isWorkingDayOverride": false,
+    "description": "Observed in remembrance of the Prophet Muhammad's birth."
+  },
+  {
+    "id": "vasant-panchami-2026",
+    "name": "Vasant Panchami / Saraswati Puja",
+    "date": "2026-02-23",
+    "type": "optional",
+    "isOptional": true,
+    "isWorkingDayOverride": false,
+    "description": "Optional festival observance depending on employee choice and HR policy."
+  },
+  {
+    "id": "maha-shivaratri-2026",
+    "name": "Maha Shivaratri",
+    "date": "2026-02-27",
+    "type": "festival",
+    "isOptional": false,
+    "isWorkingDayOverride": false,
+    "description": "Major Hindu festival dedicated to Shiva."
+  },
+  {
+    "id": "holi-2026",
+    "name": "Holi",
+    "date": "2026-03-03",
+    "type": "festival",
+    "isOptional": true,
+    "isWorkingDayOverride": false,
+    "description": "Festival of colors and spring celebrations; often policy-based optional leave rather than universal compulsory leave."
+  },
+  {
+    "id": "eid-ul-fitr-2026",
+    "name": "Eid-ul-Fitr",
+    "date": "2026-03-21",
+    "type": "company",
+    "isOptional": false,
+    "isWorkingDayOverride": false,
+    "description": "Company-recognized major festival holiday marking the end of Ramadan."
+  },
+  {
+    "id": "mahavir-jayanti-2026",
+    "name": "Mahavir Jayanti",
+    "date": "2026-03-31",
+    "type": "public",
+    "isOptional": false,
+    "isWorkingDayOverride": false,
+    "description": "Birth anniversary of Lord Mahavira."
+  },
+  {
+    "id": "good-friday-2026",
+    "name": "Good Friday",
+    "date": "2026-04-03",
+    "type": "company",
+    "isOptional": false,
+    "isWorkingDayOverride": false,
+    "description": "Company-recognized Christian observance used as a policy-based organization holiday."
+  },
+  {
+    "id": "easter-sunday-2026",
+    "name": "Easter Sunday",
+    "date": "2026-04-05",
+    "type": "optional",
+    "isOptional": true,
+    "isWorkingDayOverride": false,
+    "description": "Optional company leave day based on employee choice and policy eligibility."
+  },
+  {
+    "id": "poila-boishakh-2026",
+    "name": "Poila Boishakh / Bengali New Year",
+    "date": "2026-04-15",
+    "type": "state",
+    "isOptional": false,
+    "isWorkingDayOverride": false,
+    "description": "Regional New Year celebration in West Bengal and eastern India."
+  },
+  {
+    "id": "muharram-2026",
+    "name": "Muharram",
+    "date": "2026-05-27",
+    "type": "public",
+    "isOptional": false,
+    "isWorkingDayOverride": false,
+    "description": "Islamic New Year and observance of Muharram."
+  },
+  {
+    "id": "eid-ul-adha-2026",
+    "name": "Eid-ul-Adha / Bakrid",
+    "date": "2026-05-31",
+    "type": "public",
+    "isOptional": false,
+    "isWorkingDayOverride": false,
+    "description": "Festival of sacrifice widely observed across India."
+  },
+  {
+    "id": "buddha-purnima-2026",
+    "name": "Buddha Purnima",
+    "date": "2026-05-31",
+    "type": "public",
+    "isOptional": false,
+    "isWorkingDayOverride": false,
+    "description": "Celebration of the birth of Buddha and the full moon."
+  },
+  {
+    "id": "independence-day-2026",
+    "name": "Independence Day",
+    "date": "2026-08-15",
+    "type": "national",
+    "isOptional": false,
+    "isWorkingDayOverride": false,
+    "description": "India's Independence Day."
+  },
+  {
+    "id": "raksha-bandhan-2026",
+    "name": "Raksha Bandhan",
+    "date": "2026-08-19",
+    "type": "festival",
+    "isOptional": true,
+    "isWorkingDayOverride": false,
+    "description": "Festival celebrating the bond between siblings; often managed under policy-based optional leave."
+  },
+  {
+    "id": "janmashtami-2026",
+    "name": "Janmashtami",
+    "date": "2026-08-26",
+    "type": "festival",
+    "isOptional": true,
+    "isWorkingDayOverride": false,
+    "description": "Birth anniversary of Lord Krishna; optional under many regional HR policies."
+  },
+  {
+    "id": "onam-2026",
+    "name": "Onam",
+    "date": "2026-08-31",
+    "type": "state",
+    "isOptional": false,
+    "isWorkingDayOverride": false,
+    "description": "State-specific holiday applicable for Kerala-based operational teams and policy-defined offices."
+  },
+  {
+    "id": "ganesh-chaturthi-2026",
+    "name": "Ganesh Chaturthi",
+    "date": "2026-09-05",
+    "type": "festival",
+    "isOptional": true,
+    "isWorkingDayOverride": false,
+    "description": "Festival honoring Lord Ganesha; often granted as optional or employee-selected leave depending on policy."
+  },
+  {
+    "id": "gandhi-jayanti-2026",
+    "name": "Gandhi Jayanti",
+    "date": "2026-10-02",
+    "type": "national",
+    "isOptional": false,
+    "isWorkingDayOverride": false,
+    "description": "Birth anniversary of Mahatma Gandhi."
+  },
+  {
+    "id": "durga-puja-2026-main",
+    "name": "Durga Puja",
+    "date": "2026-10-20",
+    "type": "state",
+    "isOptional": false,
+    "isWorkingDayOverride": false,
+    "description": "Regional holiday applicable for eastern India operations and office-specific policy."
+  },
+  {
+    "id": "dussehra-2026",
+    "name": "Dussehra / Vijayadashami",
+    "date": "2026-10-22",
+    "type": "festival",
+    "isOptional": true,
+    "isWorkingDayOverride": false,
+    "description": "Festival marking the victory of good over evil; often administered as a policy-based leave day rather than universal compulsory leave."
+  },
+  {
+    "id": "kali-puja-2026",
+    "name": "Kali Puja",
+    "date": "2026-11-08",
+    "type": "state",
+    "isOptional": false,
+    "isWorkingDayOverride": false,
+    "description": "Regional festival and celebration widely observed in eastern India."
+  },
+  {
+    "id": "diwali-2026",
+    "name": "Diwali / Deepavali",
+    "date": "2026-11-08",
+    "type": "company",
+    "isOptional": false,
+    "isWorkingDayOverride": false,
+    "description": "Major company-recognized festival of lights; not assumed to be universal leave for every employee without policy configuration."
+  },
+  {
+    "id": "bhai-dooj-2026",
+    "name": "Bhai Dooj",
+    "date": "2026-11-10",
+    "type": "festival",
+    "isOptional": true,
+    "isWorkingDayOverride": false,
+    "description": "Festival celebrating the sibling bond; commonly managed under optional holiday policy."
+  },
+  {
+    "id": "chhath-puja-2026",
+    "name": "Chhath Puja",
+    "date": "2026-11-14",
+    "type": "optional",
+    "isOptional": true,
+    "isWorkingDayOverride": false,
+    "description": "Regional festival with optional leave depending on location and policy."
+  },
+  {
+    "id": "guru-nanak-jayanti-2026",
+    "name": "Guru Nanak Jayanti",
+    "date": "2026-11-26",
+    "type": "public",
+    "isOptional": false,
+    "isWorkingDayOverride": false,
+    "description": "Birth anniversary of Guru Nanak Dev Ji."
+  },
+  {
+    "id": "christmas-day-2026",
+    "name": "Christmas Day",
+    "date": "2026-12-25",
+    "type": "national",
+    "isOptional": false,
+    "isWorkingDayOverride": false,
+    "description": "National holiday commemorating Christmas."
+  }
+]

@@ -1,0 +1,22 @@
+{
+  "name": "workforce-management-automation-system",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Enterprise AI Workforce Management Automation System",
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "start": "npm --prefix frontend run start",
+    "vercel-build": "cd frontend && npm install && npm run build"
+  },
+  "keywords": [
+    "workforce-management",
+    "hrms",
+    "fastapi",
+    "react",
+    "mongodb",
+    "ai"
+  ],
+  "author": "",
+  "license": "ISC"
+}

@@ -1,0 +1,8 @@
+{
+  "name": "Workforce Management Automation System",
+  "description": "AI-powered enterprise workforce management automation system featuring attendance, leave, payroll, workforce analytics, AI predictions, and RAG assistant.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

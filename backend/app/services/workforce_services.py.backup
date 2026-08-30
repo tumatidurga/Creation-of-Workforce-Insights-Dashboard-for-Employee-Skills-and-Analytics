@@ -1,0 +1,2805 @@
+import uuid
+import logging
+from typing import List, Dict, Any, Optional, Tuple
+from datetime import datetime
+
+from backend.app.database import get_database
+from backend.app.models.schemas import (
+    EmployeeCreate,
+    EmployeeUpdate,
+    AttendanceCheckIn,
+    AttendanceCheckOut,
+    LeaveRequestBase,
+    LeaveStatusUpdate,
+    ShiftRequestBase,
+    ShiftStatusUpdate,
+    TimesheetBase,
+    AuditLogBase,
+    AuditLogCreate,
+    PerformanceBase,
+    PerformanceUpdate,
+    NotificationCreate,
+    AIPredictionBase
+)
+
+logger = logging.getLogger("uvicorn.error")
+
+
+# ==========================================================================
+# Document Normalizers
+# ==========================================================================
+
+def normalize_employee(doc: Dict[str, Any]) -> Dict[str, Any]:
+    if not doc:
+        return doc
+
+    d = dict(doc)
+
+    if "EmpID" in d and "empId" not in d:
+        d["empId"] = d["EmpID"]
+
+    if "employeeId" in d and "empId" not in d:
+        d["empId"] = d["employeeId"]
+
+    if "EmployeeName" in d:
+        full_name = str(d["EmployeeName"]).strip()
+        parts = full_name.split()
+        if parts:
+            d["firstName"] = parts[0]
+            d["lastName"] = " ".join(parts[1:]) if len(parts) > 1 else None
+
+    if "Email" in d and "email" not in d:
+        d["email"] = d["Email"]
+
+    if "Phone" in d and "phone" not in d:
+        d["phone"] = d["Phone"]
+
+    if "Age" in d and "age" not in d:
+        d["age"] = d["Age"]
+
+    if "Gender" in d and "gender" not in d:
+        d["gender"] = d["Gender"]
+
+    if "Department" in d and "department" not in d:
+        d["department"] = d["Department"]
+
+    if "JobRole" in d and "jobRole" not in d:
+        d["jobRole"] = d["JobRole"]
+
+    if "JobLevel" in d and "jobLevel" not in d:
+        d["jobLevel"] = d["JobLevel"]
+
+    if "ManagerID" in d and "managerId" not in d:
+        d["managerId"] = d["ManagerID"]
+
+    if "Location" in d and "location" not in d:
+        d["location"] = d["Location"]
+
+    if "EmploymentStatus" in d and "status" not in d:
+        d["status"] = d["EmploymentStatus"]
+
+    if "MonthlyIncome" in d and "monthlyIncome" not in d:
+        d["monthlyIncome"] = d["MonthlyIncome"]
+    elif "salary" in d and "monthlyIncome" not in d:
+        d["monthlyIncome"] = d["salary"]
+
+    if "YearsAtCompany" in d and "yearsAtCompany" not in d:
+        d["yearsAtCompany"] = d["YearsAtCompany"]
+
+    if "YearsWithCurrManager" in d and "yearsWithManager" not in d:
+        d["yearsWithManager"] = d["YearsWithCurrManager"]
+
+    if "WorkLifeBalance" in d and "workLifeBalanceScore" not in d:
+        d["workLifeBalanceScore"] = d["WorkLifeBalance"]
+
+    if "JobSatisfaction" in d and "jobSatisfactionScore" not in d:
+        d["jobSatisfactionScore"] = d["JobSatisfaction"]
+
+    if "EnvironmentSatisfaction" in d and "environmentSatisfactionScore" not in d:
+        d["environmentSatisfactionScore"] = d["EnvironmentSatisfaction"]
+
+    if "RelationshipSatisfaction" in d and "relationshipSatisfactionScore" not in d:
+        d["relationshipSatisfactionScore"] = d["RelationshipSatisfaction"]
+
+    if "Education" in d and "education" not in d:
+        d["education"] = str(d["Education"])
+
+    if "EducationField" in d and "educationField" not in d:
+        d["educationField"] = d["EducationField"]
+
+    if "Designation" in d and "designation" not in d:
+        d["designation"] = d["Designation"]
+    elif "JobRole" in d and "designation" not in d:
+        d["designation"] = d["JobRole"]
+
+    # Ensure skills is always represented as a list in API responses
+    # Convert null -> empty list, and coerce comma-separated strings into lists
+    skills_val = d.get("skills", None)
+    if skills_val is None:
+        d["skills"] = []
+    elif isinstance(skills_val, str):
+        d["skills"] = [s.strip() for s in skills_val.split(",") if s.strip()]
+
+    return d
+
+
+def normalize_attendance(
+    doc: Dict[str, Any],
+    employee: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+
+    if not doc:
+        return doc
+
+    d = dict(doc)
+
+    if "EmpID" in d and "empId" not in d:
+        d["empId"] = d["EmpID"]
+    elif "employeeId" in d and "empId" not in d:
+        d["empId"] = d["employeeId"]
+
+    if "Date" in d and "date" not in d:
+        d["date"] = d["Date"]
+
+    if "CheckIn" in d and "checkIn" not in d:
+        d["checkIn"] = d["CheckIn"]
+
+    if "CheckOut" in d and "checkOut" not in d:
+        d["checkOut"] = d["CheckOut"]
+
+    if "WorkingHours" in d and "workingHours" not in d:
+        d["workingHours"] = d["WorkingHours"]
+
+    if "AttendanceStatus" in d and "status" not in d:
+        d["status"] = d["AttendanceStatus"]
+
+    if "LateArrival" in d:
+        d["isAnomaly"] = bool(d["LateArrival"])
+        d["anomalyReason"] = "Late arrival" if d["LateArrival"] else None
+
+    if employee:
+        first_name = employee.get("firstName")
+        last_name = employee.get("lastName")
+        full_name = " ".join(part for part in [first_name, last_name] if part)
+        if full_name:
+            d["empName"] = full_name
+
+        if "department" in employee and employee.get("department") is not None:
+            d["department"] = employee["department"]
+
+        if "avatar" in employee and employee.get("avatar") is not None:
+            d["avatar"] = employee["avatar"]
+
+    if "id" not in d and "_id" in d:
+        d["id"] = str(d["_id"])
+
+    return d
+
+
+def normalize_leave(doc: Dict[str, Any]) -> Dict[str, Any]:
+    if not doc:
+        return doc
+
+    d = dict(doc)
+
+    if "EmpID" in d and "empId" not in d:
+        d["empId"] = d["EmpID"]
+    elif "employeeId" in d and "empId" not in d:
+        d["empId"] = d["employeeId"]
+
+    if "LeaveType" in d and "leaveType" not in d:
+        d["leaveType"] = d["LeaveType"]
+
+    if "StartDate" in d and "startDate" not in d:
+        d["startDate"] = d["StartDate"]
+
+    if "EndDate" in d and "endDate" not in d:
+        d["endDate"] = d["EndDate"]
+
+    if "Status" in d and "status" not in d:
+        d["status"] = d["Status"]
+
+    if "LeaveBalance" in d and "leaveBalance" not in d:
+        d["leaveBalance"] = d["LeaveBalance"]
+
+    if "days" not in d and d.get("StartDate") and d.get("EndDate"):
+        try:
+            start = datetime.strptime(d["StartDate"], "%Y-%m-%d")
+            end = datetime.strptime(d["EndDate"], "%Y-%m-%d")
+            d["days"] = (end - start).days + 1
+        except Exception:
+            d["days"] = None
+
+    if "id" not in d and "_id" in d:
+        d["id"] = str(d["_id"])
+
+    return d
+
+
+def normalize_shift(
+    doc: Dict[str, Any],
+    employee: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+
+    if not doc:
+        return doc
+
+    d = dict(doc)
+
+    if "EmpID" in d and "empId" not in d:
+        d["empId"] = d["EmpID"]
+
+    if "ShiftName" in d and "shiftName" not in d:
+        d["shiftName"] = d["ShiftName"]
+
+    if "ShiftStart" in d and "shiftStart" not in d:
+        d["shiftStart"] = d["ShiftStart"]
+
+    if "ShiftEnd" in d and "shiftEnd" not in d:
+        d["shiftEnd"] = d["ShiftEnd"]
+
+    if "OvertimeHours" in d and "overtimeHours" not in d:
+        d["overtimeHours"] = d["OvertimeHours"]
+
+    if "ShiftDate" in d and "requestedDate" not in d:
+        d["requestedDate"] = d["ShiftDate"]
+
+    if "ShiftSwapStatus" in d and "status" not in d:
+        d["status"] = d["ShiftSwapStatus"]
+    elif "ShiftSwapApproved" in d and "status" not in d:
+        d["status"] = "Approved" if d["ShiftSwapApproved"] else "Pending"
+
+    if "Reason" in d and "reason" not in d:
+        d["reason"] = d["Reason"]
+
+    if "AppliedOn" in d and "appliedOn" not in d:
+        d["appliedOn"] = d["AppliedOn"]
+
+    if "ShiftID" in d and "id" not in d:
+        d["id"] = d["ShiftID"]
+
+    if employee:
+        first_name = employee.get("firstName")
+        last_name = employee.get("lastName")
+        full_name = " ".join(part for part in [first_name, last_name] if part)
+        if full_name:
+            d["empName"] = full_name
+        if "department" in employee and employee.get("department") is not None:
+            d["department"] = employee["department"]
+
+    if "requestedShift" not in d and d.get("shiftName"):
+        start = d.get("shiftStart", "")
+        end = d.get("shiftEnd", "")
+        if start or end:
+            d["requestedShift"] = f"{d['shiftName']} ({start} - {end})".strip()
+        else:
+            d["requestedShift"] = d["shiftName"]
+
+    return d
+
+
+def normalize_timesheet(doc: Dict[str, Any]) -> Dict[str, Any]:
+    if not doc:
+        return doc
+
+    d = dict(doc)
+
+    if "EmpID" in d and "empId" not in d:
+        d["empId"] = d["EmpID"]
+
+    if "Date" in d and "date" not in d:
+        d["date"] = d["Date"]
+
+    if "Project" in d and "projectName" not in d:
+        d["projectName"] = d["Project"]
+
+    if "HoursWorked" in d and "hoursLogged" not in d:
+        d["hoursLogged"] = d["HoursWorked"]
+
+    if "ClientBillingHours" in d and "clientBillingHours" not in d:
+        d["clientBillingHours"] = d["ClientBillingHours"]
+
+    if "Status" in d and "status" not in d:
+        d["status"] = d["Status"]
+
+    if "isBillable" not in d and "clientBillingHours" in d:
+        d["isBillable"] = bool(d["clientBillingHours"] > 0)
+
+    if "id" not in d and "_id" in d:
+        d["id"] = str(d["_id"])
+
+    return d
+
+
+def normalize_payroll(doc: Dict[str, Any]) -> Dict[str, Any]:
+    if not doc:
+        return doc
+
+    d = dict(doc)
+
+    if "EmpID" in d and "empId" not in d:
+        d["empId"] = d["EmpID"]
+
+    if "BasicSalary" in d and "baseSalary" not in d:
+        d["baseSalary"] = d["BasicSalary"]
+
+    if "OvertimePay" in d and "overtimePay" not in d:
+        d["overtimePay"] = d["OvertimePay"]
+
+    if "Bonus" in d and "performanceBonus" not in d:
+        d["performanceBonus"] = d["Bonus"]
+
+    if "Tax" in d and "taxDeductions" not in d:
+        d["taxDeductions"] = d["Tax"]
+
+    if "NetSalary" in d and "netPay" not in d:
+        d["netPay"] = d["NetSalary"]
+
+    if "PayrollMonth" in d and "month" not in d:
+        d["month"] = d["PayrollMonth"]
+
+    if "grossEarnings" not in d:
+        base = float(d.get("baseSalary", 0) or 0)
+        overtime = float(d.get("overtimePay", 0) or 0)
+        bonus = float(d.get("performanceBonus", 0) or 0)
+        d["grossEarnings"] = base + overtime + bonus
+
+    if "incentives" not in d:
+        d["incentives"] = None
+
+    if "attendanceDeductions" not in d:
+        d["attendanceDeductions"] = None
+
+    if "id" not in d and "_id" in d:
+        d["id"] = str(d["_id"])
+
+    return d
+
+
+def normalize_performance(doc: Dict[str, Any]) -> Dict[str, Any]:
+    if not doc:
+        return doc
+
+    d = dict(doc)
+
+    if "EmpID" in d and "empId" not in d:
+        d["empId"] = d["EmpID"]
+
+    if "KPI" in d and "performanceScore" not in d:
+        d["performanceScore"] = d["KPI"]
+
+    if "GoalCompletion" in d and "kpiCompletionRate" not in d:
+        d["kpiCompletionRate"] = d["GoalCompletion"]
+
+    if "ProductivityScore" in d and "productivityScore" not in d:
+        d["productivityScore"] = d["ProductivityScore"]
+
+    if "PerformanceRating" in d and "performanceRating" not in d:
+        d["performanceRating"] = d["PerformanceRating"]
+
+    if "ReviewDate" in d and "reviewDate" not in d:
+        d["reviewDate"] = d["ReviewDate"]
+
+    if "promotionRecommended" not in d and "performanceRating" in d:
+        d["promotionRecommended"] = d["performanceRating"] >= 4
+
+    if "id" not in d and "_id" in d:
+        d["id"] = str(d["_id"])
+
+    return d
+
+
+def normalize_notification(doc: Dict[str, Any]) -> Dict[str, Any]:
+    if not doc:
+        return doc
+
+    d = dict(doc)
+
+    if "EmpID" in d and "empId" not in d:
+        d["empId"] = d["EmpID"]
+
+    if "Type" in d and "type" not in d:
+        d["type"] = d["Type"]
+
+    if "Message" in d and "message" not in d:
+        d["message"] = d["Message"]
+
+    if "Status" in d and "isRead" not in d:
+        d["isRead"] = str(d["Status"]).lower() == "read"
+
+    if "NotificationDate" in d and "timestamp" not in d:
+        d["timestamp"] = d["NotificationDate"]
+
+    if "title" not in d and "type" in d:
+        d["title"] = d["type"]
+
+    if "priority" not in d:
+        d["priority"] = None
+
+    if "id" not in d and "_id" in d:
+        d["id"] = str(d["_id"])
+        # Avoid leaking the raw MongoDB _id in the API response — normalize to 'id' only
+        d.pop("_id", None)
+
+    return d
+
+
+def normalize_audit_log(doc: Dict[str, Any]) -> Dict[str, Any]:
+    if not doc:
+        return doc
+
+    d = dict(doc)
+
+    if "userId" in d and "actor" not in d:
+        role = d.get("userRole", "User")
+        d["actor"] = f"{d['userId']} ({role})"
+
+    if "id" not in d and "_id" in d:
+        d["id"] = str(d["_id"])
+
+    return d
+
+def normalize_ai_prediction(
+    doc: Dict[str, Any]
+) -> Dict[str, Any]:
+
+    if not doc:
+        return doc
+
+    d = dict(doc)
+
+    # ---------------------------------------------------------
+    # Employee ID
+    # ---------------------------------------------------------
+
+    if "EmpID" in d:
+        d["empId"] = d["EmpID"]
+
+    elif "employeeId" in d and "empId" not in d:
+        d["empId"] = d["employeeId"]
+
+    # ---------------------------------------------------------
+    # AI Prediction fields
+    # ---------------------------------------------------------
+
+    if "AttritionRisk" in d:
+        d["attritionRisk"] = d["AttritionRisk"]
+
+    if "SkillGapScore" in d:
+        d["skillGapScore"] = d["SkillGapScore"]
+
+    if "WorkforceHealthScore" in d:
+        d["workforceHealthScore"] = (
+            d["WorkforceHealthScore"]
+        )
+
+    if "Recommendation" in d:
+        d["recommendation"] = d["Recommendation"]
+
+    if "PredictionDate" in d:
+        d["predictionDate"] = d["PredictionDate"]
+
+    # ---------------------------------------------------------
+    # Stable API ID
+    # ---------------------------------------------------------
+
+    if "id" not in d:
+
+        if "_id" in d:
+            d["id"] = str(d["_id"])
+
+        else:
+            d["id"] = (
+                f"AI-{d.get('empId', 'UNKNOWN')}-"
+                f"{d.get('predictionDate', 'UNKNOWN')}"
+            )
+
+    return d
+
+
+# ==========================================================================
+# 1. Employee Service
+# ==========================================================================
+
+class MissingEmployeeCounterError(RuntimeError):
+    """Raised when the counters.employee_id document is missing.
+
+    This is a specific subclass so callers can distinguish an uninitialized
+    employee counter from other RuntimeError conditions (like DB connection).
+    """
+
+
+class EmployeeService:
+    @staticmethod
+    async def count_total() -> int:
+        db = get_database()
+        if db is None:
+            raise RuntimeError("MongoDB database is not connected.")
+        return await db.employees.count_documents({})
+
+    @staticmethod
+    async def count_active() -> int:
+        db = get_database()
+        if db is None:
+            raise RuntimeError("MongoDB database is not connected.")
+        return await db.employees.count_documents({"EmploymentStatus": {"$regex": r"^active$", "$options": "i"}})
+
+
+    # MongoDB field names -> API field names
+    SORT_FIELD_MAP = {
+        "empId": "EmpID",
+        "firstName": "EmployeeName",
+        "lastName": "EmployeeName",
+        "department": "Department",
+        "jobRole": "JobRole",
+        "monthlyIncome": "MonthlyIncome",
+        "status": "EmploymentStatus",
+        "age": "Age",
+        "jobLevel": "JobLevel",
+        "location": "Location",
+        "yearsAtCompany": "YearsAtCompany"
+    }
+
+    # API field names -> MongoDB field names
+    FIELD_MAP = {
+        "empId": "EmpID",
+        "email": "Email",
+        "phone": "Phone",
+        "age": "Age",
+        "gender": "Gender",
+        "department": "Department",
+        "jobRole": "JobRole",
+        "education": "Education",
+        "educationField": "EducationField",
+        "monthlyIncome": "MonthlyIncome",
+        "jobLevel": "JobLevel",
+        "yearsAtCompany": "YearsAtCompany",
+        "workLifeBalanceScore": "WorkLifeBalance",
+        "jobSatisfactionScore": "JobSatisfaction",
+        "environmentSatisfactionScore": "EnvironmentSatisfaction",
+        "relationshipSatisfactionScore": "RelationshipSatisfaction",
+        "yearsWithManager": "YearsWithCurrManager",
+        "status": "EmploymentStatus",
+        "managerId": "ManagerID",
+        "location": "Location"
+    }
+
+    # ----------------------------------------------------------------------
+    # GET ALL EMPLOYEES
+    # ----------------------------------------------------------------------
+
+    @staticmethod
+    async def get_all(
+        department: Optional[str] = None,
+        status: Optional[str] = None,
+        search: Optional[str] = None,
+        sort_by: str = "empId",
+        sort_order: str = "asc",
+        page: int = 1,
+        size: int = 50
+    ) -> Tuple[List[Dict[str, Any]], int]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        # ---------------------------------------------------------
+        # Build MongoDB query
+        # ---------------------------------------------------------
+
+        query: Dict[str, Any] = {}
+
+        # ---------------------------------------------------------
+        # Department filter
+        # ---------------------------------------------------------
+
+        if department and department.lower() != "all":
+            query["Department"] = {
+                "$regex": f"^{department}$",
+                "$options": "i"
+            }
+
+        # ---------------------------------------------------------
+        # Employment status filter
+        # ---------------------------------------------------------
+
+        if status and status.lower() != "all":
+            query["EmploymentStatus"] = {
+                "$regex": f"^{status}$",
+                "$options": "i"
+            }
+
+        # ---------------------------------------------------------
+        # Search
+        # ---------------------------------------------------------
+
+        if search:
+            query["$or"] = [
+                {
+                    "EmpID": {
+                        "$regex": search,
+                        "$options": "i"
+                    }
+                },
+                {
+                    "EmployeeName": {
+                        "$regex": search,
+                        "$options": "i"
+                    }
+                },
+                {
+                    "Email": {
+                        "$regex": search,
+                        "$options": "i"
+                    }
+                },
+                {
+                    "Department": {
+                        "$regex": search,
+                        "$options": "i"
+                    }
+                },
+                {
+                    "JobRole": {
+                        "$regex": search,
+                        "$options": "i"
+                    }
+                },
+                {
+                    "Location": {
+                        "$regex": search,
+                        "$options": "i"
+                    }
+                }
+            ]
+
+        # ---------------------------------------------------------
+        # Count matching employees
+        # ---------------------------------------------------------
+
+        total = await db.employees.count_documents(
+            query
+        )
+
+        # ---------------------------------------------------------
+        # Sorting
+        # ---------------------------------------------------------
+
+        order_val = (
+            1
+            if sort_order.lower() == "asc"
+            else -1
+        )
+
+        mongo_sort_field = EmployeeService.SORT_FIELD_MAP.get(
+            sort_by,
+            "EmpID"
+        )
+
+        # ---------------------------------------------------------
+        # Pagination
+        # ---------------------------------------------------------
+
+        skip = (page - 1) * size
+
+        cursor = (
+            db.employees
+            .find(
+                query,
+                {"_id": 0}
+            )
+            .sort(
+                mongo_sort_field,
+                order_val
+            )
+            .skip(skip)
+            .limit(size)
+        )
+
+        items = await cursor.to_list(
+            length=size
+        )
+
+        # ---------------------------------------------------------
+        # Normalize MongoDB documents -> API format
+        # ---------------------------------------------------------
+
+        normalized_items = [
+            normalize_employee(item)
+            for item in items
+        ]
+
+        # ---------------------------------------------------------
+        # Batch enrichment: performance, AI predictions, payroll
+        # Use a single batched query per related collection to avoid N+1
+        # ---------------------------------------------------------
+        emp_ids = [e.get('empId') for e in normalized_items if e.get('empId')]
+        if emp_ids:
+            try:
+                # Performance documents for these employees
+                perf_docs = await db.performance.find({"EmpID": {"$in": emp_ids}}, {"_id": 0}).to_list(length=len(emp_ids))
+                perf_raw_map = {d.get('EmpID'): d for d in perf_docs if d and d.get('EmpID')}
+                perf_norm_map = {normalize_performance(d).get('empId'): normalize_performance(d) for d in perf_docs if d}
+
+                # AI prediction documents
+                ai_docs = await db.ai_predictions.find({"EmpID": {"$in": emp_ids}}, {"_id": 0}).to_list(length=len(emp_ids))
+                ai_norm_map = {normalize_ai_prediction(d).get('empId'): normalize_ai_prediction(d) for d in ai_docs if d}
+
+                # Payroll documents: fetch recent entries and pick the latest per employee
+                payroll_docs = await db.payroll.find({"EmpID": {"$in": emp_ids}}, {"_id": 0}).to_list(length=max(50, len(emp_ids)*3))
+                payroll_map = {}
+                for doc in payroll_docs:
+                    if not doc:
+                        continue
+                    empid = doc.get('EmpID')
+                    norm = normalize_payroll(doc)
+                    if empid in payroll_map:
+                        # choose latest by month string (expects YYYY-MM or lexicographically comparable)
+                        existing_month = payroll_map[empid].get('month') or ''
+                        this_month = norm.get('month') or ''
+                        if this_month and this_month > existing_month:
+                            payroll_map[empid] = norm
+                    else:
+                        payroll_map[empid] = norm
+
+                # Merge normalized related fields into employee responses
+                for emp in normalized_items:
+                    eid = emp.get('empId')
+                    if not eid:
+                        continue
+
+                    # Performance
+                    pnorm = perf_norm_map.get(eid)
+                    praw = perf_raw_map.get(eid)
+                    if pnorm:
+                        for key in [
+                            'performanceScore',
+                            'productivityScore',
+                            'kpiCompletionRate',
+                            'performanceRating',
+                            'reviewDate'
+                        ]:
+                            if key in pnorm:
+                                emp[key] = pnorm.get(key)
+
+                        # goalsCompleted/totalGoals come from raw document fields when present
+                        if praw and praw.get('GoalCompletion') is not None:
+                            emp['goalsCompleted'] = praw.get('GoalCompletion')
+                        if praw and praw.get('TotalGoals') is not None:
+                            emp['totalGoals'] = praw.get('TotalGoals')
+                        else:
+                            emp.setdefault('totalGoals', None)
+
+                        if 'promotionRecommended' in pnorm:
+                            emp['promotionRecommended'] = pnorm.get('promotionRecommended')
+
+                    # AI prediction
+                    a = ai_norm_map.get(eid)
+                    if a:
+                        if a.get('recommendation'):
+                            emp['aiFeedback'] = a.get('recommendation')
+                        if a.get('attritionRisk') is not None:
+                            emp['attritionRisk'] = a.get('attritionRisk')
+
+                    # Payroll (latest)
+                    pay = payroll_map.get(eid)
+                    if pay:
+                        if 'month' in pay:
+                            emp['lastPayrollMonth'] = pay.get('month')
+                        if 'netPay' in pay:
+                            emp['lastNetPay'] = pay.get('netPay')
+
+            except Exception as _e:
+                logger.warning(f"Failed to batch-enrich employees: {_e}")
+
+        return normalized_items, total
+
+    # ----------------------------------------------------------------------
+    # GET EMPLOYEE BY ID
+    # ----------------------------------------------------------------------
+
+    @staticmethod
+    async def get_by_id(
+        emp_id: str
+    ) -> Optional[Dict[str, Any]]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        emp = await db.employees.find_one(
+            {
+                "EmpID": emp_id
+            },
+            {"_id": 0}
+        )
+
+        if emp:
+            return normalize_employee(emp)
+
+        return None
+
+    # ----------------------------------------------------------------------
+    # CREATE EMPLOYEE
+    # ----------------------------------------------------------------------
+
+    @staticmethod
+    async def create(
+        data: EmployeeCreate
+    ) -> Dict[str, Any]:
+
+        from pymongo.errors import DuplicateKeyError
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        # ---------------------------------------------------------
+        # Determine EmpID: use client-supplied if present, else
+        # generate server-side using counters.employee_id.
+        # Note: upsert is intentionally False to avoid creating
+        # the counter document automatically. The deployment
+        # operator should initialize counters.employee_id to
+        # the current max (e.g., seq=10000) before enabling generation.
+        # ---------------------------------------------------------
+
+        emp_id = getattr(data, 'empId', None)
+
+        if not emp_id:
+            # Attempt to atomically get the next sequence without upsert
+            from pymongo import ReturnDocument
+
+            counter = await db.counters.find_one_and_update(
+                {"_id": "employee_id"},
+                {"$inc": {"seq": 1}},
+                upsert=False,
+                return_document=ReturnDocument.AFTER
+            )
+
+            if not counter or 'seq' not in counter:
+                # Raise a specific exception so the router can return 503
+                raise MissingEmployeeCounterError(
+                    "Employee ID counter is not initialized. "
+                    "Please initialize counters.employee_id with the current sequence before enabling server-side EmpID generation."
+                )
+
+            sequence = counter['seq']
+            emp_id = f"EMP{sequence:06d}"
+
+        # ---------------------------------------------------------
+        # Convert API format -> MongoDB format
+        # ---------------------------------------------------------
+
+        doc = {
+            "EmpID": emp_id,
+            "EmployeeName": (
+                f"{data.firstName} {data.lastName}"
+            ).strip(),
+            "Email": str(data.email) if data.email is not None else None,
+            "Phone": data.phone,
+            "Age": data.age,
+            "Gender": data.gender,
+            "Department": data.department,
+            "JobRole": data.jobRole,
+            "Education": data.education,
+            "EducationField": data.educationField,
+            "MonthlyIncome": data.monthlyIncome,
+            "JobLevel": data.jobLevel,
+            "ManagerID": data.managerId,
+            "Location": data.location,
+            "EmploymentStatus": data.status,
+            "YearsAtCompany": data.yearsAtCompany,
+            "YearsWithCurrManager": data.yearsWithManager,
+            "WorkLifeBalance": data.workLifeBalanceScore,
+            "JobSatisfaction": data.jobSatisfactionScore,
+            "EnvironmentSatisfaction": (
+                data.environmentSatisfactionScore
+            ),
+            "RelationshipSatisfaction": (
+                data.relationshipSatisfactionScore
+            ),
+            "EmploymentType": "Full-Time",
+            "Role": "Employee",
+            "Attrition": "No",
+            "JoiningDate": "",
+            "ExitDate": "N/A"
+        }
+
+        # ---------------------------------------------------------
+        # Insert into MongoDB with explicit DuplicateKeyError handling
+        # ---------------------------------------------------------
+        try:
+            await db.employees.insert_one(doc)
+        except DuplicateKeyError as exc:
+            # Do not overwrite existing employees; surface a clear error
+            raise ValueError(f"Employee ID '{emp_id}' already exists.") from exc
+
+        # ---------------------------------------------------------
+        # Return API format
+        # ---------------------------------------------------------
+
+        return normalize_employee(
+            doc
+        )
+
+    # ----------------------------------------------------------------------
+    # UPDATE EMPLOYEE
+    # ----------------------------------------------------------------------
+
+    @staticmethod
+    async def update(
+        emp_id: str,
+        data: EmployeeUpdate
+    ) -> Optional[Dict[str, Any]]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        # ---------------------------------------------------------
+        # Get API fields supplied by client
+        # ---------------------------------------------------------
+
+        incoming = {
+            key: value
+            for key, value in data.model_dump().items()
+            if value is not None
+        }
+
+        if not incoming:
+            return await EmployeeService.get_by_id(
+                emp_id
+            )
+
+        # ---------------------------------------------------------
+        # Convert API field names -> MongoDB field names
+        # ---------------------------------------------------------
+
+        update_fields: Dict[str, Any] = {}
+
+        for api_field, value in incoming.items():
+
+            mongo_field = EmployeeService.FIELD_MAP.get(
+                api_field
+            )
+
+            if mongo_field:
+                update_fields[mongo_field] = value
+
+        # ---------------------------------------------------------
+        # Handle firstName / lastName
+        #
+        # MongoDB stores complete name in EmployeeName.
+        # ---------------------------------------------------------
+
+        if (
+            "firstName" in incoming
+            or "lastName" in incoming
+        ):
+
+            existing = await db.employees.find_one(
+                {
+                    "EmpID": emp_id
+                },
+                {
+                    "_id": 0,
+                    "EmployeeName": 1
+                }
+            )
+
+            if not existing:
+                return None
+
+            current_name = existing.get(
+                "EmployeeName",
+                ""
+            )
+
+            name_parts = current_name.split(
+                " ",
+                1
+            )
+
+            current_first_name = (
+                name_parts[0]
+                if name_parts
+                else ""
+            )
+
+            current_last_name = (
+                name_parts[1]
+                if len(name_parts) > 1
+                else ""
+            )
+
+            first_name = incoming.get(
+                "firstName",
+                current_first_name
+            )
+
+            last_name = incoming.get(
+                "lastName",
+                current_last_name
+            )
+
+            update_fields["EmployeeName"] = (
+                f"{first_name} {last_name}"
+            ).strip()
+
+        # ---------------------------------------------------------
+        # Employee ID must not be changed
+        # ---------------------------------------------------------
+
+        update_fields.pop(
+            "EmpID",
+            None
+        )
+
+        # ---------------------------------------------------------
+        # Nothing to update
+        # ---------------------------------------------------------
+
+        if not update_fields:
+            return await EmployeeService.get_by_id(
+                emp_id
+            )
+
+        # ---------------------------------------------------------
+        # Perform MongoDB update
+        # ---------------------------------------------------------
+
+        result = await db.employees.find_one_and_update(
+            {
+                "EmpID": emp_id
+            },
+            {
+                "$set": update_fields
+            },
+            return_document=True,
+            projection={
+                "_id": 0
+            }
+        )
+
+        if result:
+            return normalize_employee(
+                result
+            )
+
+        return None
+
+    # ----------------------------------------------------------------------
+    # DELETE EMPLOYEE
+    # ----------------------------------------------------------------------
+
+    @staticmethod
+    async def delete(
+        emp_id: str
+    ) -> bool:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        result = await db.employees.delete_one(
+            {
+                "EmpID": emp_id
+            }
+        )
+
+        return result.deleted_count > 0
+
+
+# ==========================================================================
+# 2. Attendance Service
+# ==========================================================================
+
+class AttendanceService:
+    @staticmethod
+    async def count_total_and_present() -> (int, int):
+        db = get_database()
+        if db is None:
+            raise RuntimeError("MongoDB database is not connected.")
+        total = await db.attendance.count_documents({})
+        present = await db.attendance.count_documents({"AttendanceStatus": {"$regex": r"^present$", "$options": "i"}})
+        return total, present
+
+
+    @staticmethod
+    async def get_all(
+        department: Optional[str] = None,
+        status: Optional[str] = None,
+        page: int = 1,
+        size: int = 50
+    ) -> Tuple[List[Dict[str, Any]], int]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        # ---------------------------------------------------------
+        # Build MongoDB query
+        # ---------------------------------------------------------
+
+        query: Dict[str, Any] = {}
+
+        # ---------------------------------------------------------
+        # Status filter
+        #
+        # API:
+        # status
+        #
+        # MongoDB:
+        # AttendanceStatus
+        # ---------------------------------------------------------
+
+        if status and status.lower() != "all":
+
+            query["AttendanceStatus"] = {
+                "$regex": f"^{status}$",
+                "$options": "i"
+            }
+
+        # ---------------------------------------------------------
+        # Department filter
+        #
+        # Attendance collection does not contain Department.
+        #
+        # Therefore:
+        # 1. Find employees belonging to the department.
+        # 2. Extract their EmpID values.
+        # 3. Filter attendance using those EmpID values.
+        # ---------------------------------------------------------
+
+        if department and department.lower() != "all":
+
+            employee_cursor = db.employees.find(
+                {
+                    "Department": {
+                        "$regex": f"^{department}$",
+                        "$options": "i"
+                    }
+                },
+                {
+                    "_id": 0,
+                    "EmpID": 1
+                }
+            )
+
+            employee_documents = await employee_cursor.to_list(
+                length=None
+            )
+
+            employee_ids = [
+                employee["EmpID"]
+                for employee in employee_documents
+                if employee.get("EmpID")
+            ]
+
+            # No employees found in requested department
+            if not employee_ids:
+                return [], 0
+
+            query["EmpID"] = {
+                "$in": employee_ids
+            }
+
+        # ---------------------------------------------------------
+        # Count matching attendance records
+        # ---------------------------------------------------------
+
+        total = await db.attendance.count_documents(
+            query
+        )
+
+        # ---------------------------------------------------------
+        # Pagination
+        # ---------------------------------------------------------
+
+        skip = (page - 1) * size
+
+        cursor = (
+            db.attendance
+            .find(
+                query,
+                {"_id": 0}
+            )
+            .skip(skip)
+            .limit(size)
+        )
+
+        items = await cursor.to_list(
+            length=size
+        )
+
+        # ---------------------------------------------------------
+        # Normalize and enrich employee information
+        # ---------------------------------------------------------
+
+        employee_ids = {
+            item.get("EmpID")
+            for item in items
+            if item.get("EmpID")
+        }
+
+        employee_lookup: Dict[str, Dict[str, Any]] = {}
+        if employee_ids:
+            employee_cursor = db.employees.find(
+                {"EmpID": {"$in": list(employee_ids)}},
+                {"_id": 0}
+            )
+            employee_documents = await employee_cursor.to_list(length=None)
+            for employee_document in employee_documents:
+                employee_id = employee_document.get("EmpID")
+                if employee_id:
+                    employee_lookup[employee_id] = normalize_employee(employee_document)
+
+        normalized_items = []
+
+        for item in items:
+            emp_id = item.get("EmpID")
+            normalized_items.append(
+                normalize_attendance(
+                    item,
+                    employee_lookup.get(emp_id)
+                )
+            )
+
+        return normalized_items, total
+
+    # ----------------------------------------------------------------------
+    # GET ATTENDANCE ANOMALIES
+    # ----------------------------------------------------------------------
+
+    @staticmethod
+    async def get_anomalies() -> List[Dict[str, Any]]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        # ---------------------------------------------------------
+        # Dataset uses LateArrival = True for attendance anomalies
+        # ---------------------------------------------------------
+
+        cursor = db.attendance.find(
+            {
+                "LateArrival": True
+            },
+            {
+                "_id": 0
+            }
+        )
+
+        items = await cursor.to_list(
+            length=100
+        )
+
+        employee_ids = {
+            item.get("EmpID")
+            for item in items
+            if item.get("EmpID")
+        }
+
+        employee_lookup: Dict[str, Dict[str, Any]] = {}
+        if employee_ids:
+            employee_cursor = db.employees.find(
+                {"EmpID": {"$in": list(employee_ids)}},
+                {"_id": 0}
+            )
+            employee_documents = await employee_cursor.to_list(length=None)
+            for employee_document in employee_documents:
+                employee_id = employee_document.get("EmpID")
+                if employee_id:
+                    employee_lookup[employee_id] = normalize_employee(employee_document)
+
+        normalized_items = []
+
+        for item in items:
+            emp_id = item.get("EmpID")
+            normalized_items.append(
+                normalize_attendance(
+                    item,
+                    employee_lookup.get(emp_id)
+                )
+            )
+
+        return normalized_items
+
+    # ----------------------------------------------------------------------
+    # CHECK IN
+    # ----------------------------------------------------------------------
+
+    @staticmethod
+    def _is_late_checkin(time_value: Optional[str]) -> bool:
+        if not time_value:
+            return False
+
+        raw_value = str(time_value).strip()
+        if raw_value in {"", "N/A", "--:--", "None", "null"}:
+            return False
+
+        try:
+            if "T" in raw_value or raw_value.endswith("Z"):
+                parsed = datetime.fromisoformat(raw_value.replace("Z", "+00:00"))
+                actual_time = parsed.time()
+            else:
+                if ":" in raw_value:
+                    parts = raw_value.split(":")
+                    if len(parts) == 2:
+                        actual_time = datetime.strptime(raw_value, "%H:%M").time()
+                    else:
+                        actual_time = datetime.strptime(raw_value, "%H:%M:%S").time()
+                else:
+                    return False
+
+            threshold = datetime.strptime("09:15", "%H:%M").time()
+            return actual_time > threshold
+        except (TypeError, ValueError):
+            return False
+
+    @staticmethod
+    async def check_in(
+        payload: AttendanceCheckIn
+    ) -> Dict[str, Any]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        if not payload.empId or not str(payload.empId).strip():
+            raise ValueError("Invalid employee ID.")
+
+        employee = await EmployeeService.get_by_id(
+            payload.empId
+        )
+
+        if not employee:
+            raise ValueError(
+                f"Employee '{payload.empId}' was not found."
+            )
+
+        now = datetime.now()
+        today_str = now.strftime("%Y-%m-%d")
+
+        raw_check_in = payload.checkInTime or now.strftime("%H:%M")
+        raw_check_in = str(raw_check_in).strip()
+
+        try:
+            if "T" in raw_check_in or raw_check_in.endswith("Z"):
+                check_in_dt = datetime.fromisoformat(raw_check_in.replace("Z", "+00:00"))
+                time_str = check_in_dt.strftime("%H:%M")
+            elif ":" in raw_check_in:
+                if len(raw_check_in.split(":")) == 2:
+                    time_str = datetime.strptime(raw_check_in, "%H:%M").strftime("%H:%M")
+                else:
+                    time_str = datetime.strptime(raw_check_in, "%H:%M:%S").strftime("%H:%M")
+            else:
+                raise ValueError("invalid check-in time format")
+        except ValueError as exc:
+            raise ValueError("Invalid check-in time supplied.") from exc
+
+        existing = await db.attendance.find_one(
+            {
+                "EmpID": payload.empId,
+                "Date": today_str
+            }
+        )
+
+        if existing:
+            current_check_in = existing.get("CheckIn")
+            if current_check_in not in (None, "", "N/A", "--:--"):
+                raise ValueError(
+                    f"Employee '{payload.empId}' has already checked in today."
+                )
+
+            late_arrival = AttendanceService._is_late_checkin(time_str)
+            update_payload = {
+                "CheckIn": time_str,
+                "AttendanceStatus": "Late" if late_arrival else "Present",
+                "LateArrival": late_arrival,
+                "CheckOut": None,
+                "WorkingHours": 0.0,
+            }
+            await db.attendance.update_one(
+                {"_id": existing["_id"]},
+                {"$set": update_payload}
+            )
+            merged_record = {**existing, **update_payload}
+            return normalize_attendance(merged_record, employee)
+
+        late_arrival = AttendanceService._is_late_checkin(time_str)
+        record = {
+            "EmpID": payload.empId,
+            "Date": today_str,
+            "CheckIn": time_str,
+            "CheckOut": None,
+            "WorkingHours": 0.0,
+            "AttendanceStatus": "Late" if late_arrival else "Present",
+            "LateArrival": late_arrival,
+        }
+
+        await db.attendance.insert_one(record)
+        return normalize_attendance(record, employee)
+
+    # ----------------------------------------------------------------------
+    # CHECK OUT
+    # ----------------------------------------------------------------------
+
+    @staticmethod
+    async def check_out(
+        payload: AttendanceCheckOut
+    ) -> Optional[Dict[str, Any]]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        if not payload.empId or not str(payload.empId).strip():
+            raise ValueError("Invalid employee ID.")
+
+        employee = await EmployeeService.get_by_id(
+            payload.empId
+        )
+
+        if not employee:
+            raise ValueError(
+                f"Employee '{payload.empId}' was not found."
+            )
+
+        now = datetime.now()
+        today_str = now.strftime("%Y-%m-%d")
+
+        raw_check_out = payload.checkOutTime or now.strftime("%H:%M")
+        raw_check_out = str(raw_check_out).strip()
+
+        try:
+            if "T" in raw_check_out or raw_check_out.endswith("Z"):
+                check_out_dt = datetime.fromisoformat(raw_check_out.replace("Z", "+00:00"))
+                time_str = check_out_dt.strftime("%H:%M")
+            elif ":" in raw_check_out:
+                if len(raw_check_out.split(":")) == 2:
+                    time_str = datetime.strptime(raw_check_out, "%H:%M").strftime("%H:%M")
+                else:
+                    time_str = datetime.strptime(raw_check_out, "%H:%M:%S").strftime("%H:%M")
+            else:
+                raise ValueError("invalid check-out time format")
+        except ValueError as exc:
+            raise ValueError("Invalid check-out time supplied.") from exc
+
+        record = await db.attendance.find_one(
+            {
+                "EmpID": payload.empId,
+                "Date": today_str
+            }
+        )
+
+        if not record:
+            raise ValueError(
+                "Attendance record not found for today. Employee must check in before checking out."
+            )
+
+        if record.get("CheckIn") in (None, "", "N/A", "--:--"):
+            raise ValueError(
+                "Employee has not checked in today."
+            )
+
+        current_check_out = record.get("CheckOut")
+        if current_check_out not in (None, "", "N/A", "--:--"):
+            raise ValueError(
+                "Employee has already checked out today."
+            )
+
+        in_time_value = record.get("CheckIn")
+        in_dt = None
+        out_dt = None
+
+        try:
+            in_dt = datetime.strptime(str(in_time_value), "%H:%M")
+            out_dt = datetime.strptime(time_str, "%H:%M")
+        except ValueError as exc:
+            raise ValueError("Invalid check-in/check-out time found in attendance record.") from exc
+
+        if out_dt <= in_dt:
+            raise ValueError("Check-out time must be later than check-in time.")
+
+        working_hours = round((out_dt - in_dt).total_seconds() / 3600.0, 2)
+        late_arrival = AttendanceService._is_late_checkin(in_time_value)
+        attendance_status = "Late" if late_arrival else "Present"
+
+        updated_record = await db.attendance.find_one_and_update(
+            {
+                "_id": record["_id"]
+            },
+            {
+                "$set": {
+                    "CheckOut": time_str,
+                    "WorkingHours": working_hours,
+                    "AttendanceStatus": attendance_status,
+                    "LateArrival": late_arrival,
+                }
+            },
+            return_document=True,
+            projection={
+                "_id": 0
+            }
+        )
+
+        if updated_record:
+            return normalize_attendance(updated_record, employee)
+
+        return None
+
+
+# ==========================================================================
+# 3. Leave Service
+# ==========================================================================
+
+class LeaveService:
+
+    @staticmethod
+    async def count_pending() -> int:
+        db = get_database()
+        if db is None:
+            raise RuntimeError("MongoDB database is not connected.")
+        return await db.leaves.count_documents({"Status": {"$regex": r"^pending$", "$options": "i"}})
+
+
+    @staticmethod
+    async def get_all(
+        status: Optional[str] = None,
+        page: int = 1,
+        size: int = 50
+    ) -> List[Dict[str, Any]]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        # ---------------------------------------------------------
+        # Build query using ACTUAL MongoDB field names
+        # ---------------------------------------------------------
+
+        query: Dict[str, Any] = {}
+
+        if status and status.lower() != "all":
+            query["Status"] = {
+                "$regex": f"^{status}$",
+                "$options": "i"
+            }
+
+        # ---------------------------------------------------------
+        # Pagination
+        # ---------------------------------------------------------
+        skip = (page - 1) * size
+
+        cursor = db.leaves.find(
+            query,
+            {"_id": 0}
+        ).skip(skip).limit(size)
+
+        items = await cursor.to_list(
+            length=size
+        )
+
+        # ---------------------------------------------------------
+        # Convert MongoDB documents to API format
+        # ---------------------------------------------------------
+
+        return [
+            normalize_leave(item)
+            for item in items
+        ]
+
+    @staticmethod
+    async def submit(
+        request: LeaveRequestBase
+    ) -> Dict[str, Any]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        if not request.empId or not str(request.empId).strip():
+            raise ValueError("Invalid employee ID.")
+
+        data = {
+            "EmpID": request.empId,
+            "LeaveType": request.leaveType,
+            "StartDate": request.startDate,
+            "EndDate": request.endDate,
+            "Status": request.status or "Pending",
+            "LeaveBalance": request.leaveBalance
+        }
+
+        if request.leaveType and request.startDate and request.endDate:
+            try:
+                start = datetime.strptime(str(request.startDate), "%Y-%m-%d")
+                end = datetime.strptime(str(request.endDate), "%Y-%m-%d")
+                data["days"] = max(0, (end - start).days + 1)
+            except ValueError:
+                pass
+
+        await db.leaves.insert_one(data)
+
+        return normalize_leave(data)
+
+    @staticmethod
+    async def update_status(
+        leave_id: str,
+        update: LeaveStatusUpdate
+    ) -> Optional[Dict[str, Any]]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        query: Dict[str, Any] = {"_id": leave_id}
+        try:
+            from bson import ObjectId
+            query = {"_id": ObjectId(leave_id)}
+        except Exception:
+            query = {"id": leave_id}
+
+        result = await db.leaves.find_one_and_update(
+            query,
+            {
+                "$set": {
+                    "Status": update.status
+                }
+            },
+            return_document=True
+        )
+
+        if result:
+            return normalize_leave(result)
+
+        return None
+
+
+# ==========================================================================
+# 4. Shift Service
+# ==========================================================================
+
+class ShiftService:
+
+    @staticmethod
+    async def count_pending() -> int:
+        db = get_database()
+        if db is None:
+            raise RuntimeError("MongoDB database is not connected.")
+        return await db.shifts.count_documents({"ShiftSwapStatus": {"$regex": r"^pending$", "$options": "i"}})
+
+
+    # ----------------------------------------------------------------------
+    # GET ALL SHIFT REQUESTS
+    # ----------------------------------------------------------------------
+
+    @staticmethod
+    async def get_all(
+        status: Optional[str] = None,
+        page: int = 1,
+        size: int = 50
+    ) -> List[Dict[str, Any]]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        # ---------------------------------------------------------
+        # Build query
+        # ---------------------------------------------------------
+
+        query: Dict[str, Any] = {}
+
+        if status and status.lower() != "all":
+
+            normalized_status = status.strip().capitalize()
+
+            if normalized_status not in {
+                "Pending",
+                "Approved",
+                "Rejected"
+            }:
+                return []
+
+            query["ShiftSwapStatus"] = normalized_status
+
+        # ---------------------------------------------------------
+        # Pagination
+        # ---------------------------------------------------------
+        skip = (page - 1) * size
+
+        cursor = db.shifts.find(
+            query,
+            {"_id": 0}
+        ).skip(skip).limit(size)
+
+        items = await cursor.to_list(
+            length=size
+        )
+
+        # ---------------------------------------------------------
+        # Enrich employee information
+        # ---------------------------------------------------------
+
+        employee_ids = {
+            item.get("EmpID")
+            for item in items
+            if item.get("EmpID")
+        }
+
+        employee_lookup: Dict[str, Dict[str, Any]] = {}
+        if employee_ids:
+            employee_cursor = db.employees.find(
+                {"EmpID": {"$in": list(employee_ids)}},
+                {"_id": 0}
+            )
+            employee_documents = await employee_cursor.to_list(length=None)
+            for employee_document in employee_documents:
+                employee_id = employee_document.get("EmpID")
+                if employee_id:
+                    employee_lookup[employee_id] = normalize_employee(employee_document)
+
+        normalized_items = []
+
+        for item in items:
+            emp_id = item.get("EmpID")
+            normalized_items.append(
+                normalize_shift(
+                    item,
+                    employee_lookup.get(emp_id)
+                )
+            )
+
+        return normalized_items
+
+    # ----------------------------------------------------------------------
+    # CREATE SHIFT REQUEST
+    # ----------------------------------------------------------------------
+
+    @staticmethod
+    async def submit(
+        request: ShiftRequestBase
+    ) -> Dict[str, Any]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        # ---------------------------------------------------------
+        # Verify employee exists
+        # ---------------------------------------------------------
+
+        employee = await EmployeeService.get_by_id(
+            request.empId
+        )
+
+        if not employee:
+            raise ValueError(
+                f"Employee '{request.empId}' was not found."
+            )
+
+        # ---------------------------------------------------------
+        # Parse requested shift
+        #
+        # Expected:
+        # "Night (22:00 - 07:00)"
+        # ---------------------------------------------------------
+
+        requested_shift = request.requestedShift.strip()
+
+        if "(" not in requested_shift or ")" not in requested_shift:
+            raise ValueError(
+                "requestedShift must use the format "
+                "'ShiftName (HH:MM - HH:MM)'."
+            )
+
+        try:
+
+            shift_name = requested_shift.split(
+                "(",
+                1
+            )[0].strip()
+
+            time_part = requested_shift.split(
+                "(",
+                1
+            )[1].rsplit(
+                ")",
+                1
+            )[0].strip()
+
+            shift_start, shift_end = [
+                value.strip()
+                for value in time_part.split(
+                    "-",
+                    1
+                )
+            ]
+
+            if not shift_name:
+                raise ValueError
+
+            if not shift_start or not shift_end:
+                raise ValueError
+
+        except Exception:
+
+            raise ValueError(
+                "Invalid requestedShift format. "
+                "Use 'Night (22:00 - 07:00)'."
+            )
+
+        # ---------------------------------------------------------
+        # Validate date
+        # ---------------------------------------------------------
+
+        try:
+
+            datetime.strptime(
+                request.requestedDate,
+                "%Y-%m-%d"
+            )
+
+        except ValueError:
+
+            raise ValueError(
+                "requestedDate must use YYYY-MM-DD format."
+            )
+
+        # ---------------------------------------------------------
+        # Generate next ShiftID atomically
+        #
+        # Counter currently contains:
+        # seq = 20000
+        #
+        # Next ID:
+        # SH-020001
+        # ---------------------------------------------------------
+
+        counter = await db.counters.find_one_and_update(
+            {
+                "_id": "shift_id"
+            },
+            {
+                "$inc": {
+                    "seq": 1
+                }
+            },
+            upsert=True,
+            return_document=True
+        )
+
+        sequence = counter["seq"]
+
+        shift_id = f"SH-{sequence:06d}"
+
+        # ---------------------------------------------------------
+        # Create MongoDB document
+        # ---------------------------------------------------------
+
+        applied_on = datetime.now().strftime(
+            "%Y-%m-%d"
+        )
+
+        record = {
+            "EmpID": request.empId,
+            "ShiftName": shift_name,
+            "ShiftStart": shift_start,
+            "ShiftEnd": shift_end,
+            "OvertimeHours": 0.0,
+            "ShiftSwapApproved": False,
+            "ShiftDate": request.requestedDate,
+            "ShiftID": shift_id,
+            "ShiftSwapStatus": "Pending",
+            "Reason": request.reason,
+            "AppliedOn": applied_on
+        }
+
+        # ---------------------------------------------------------
+        # Insert
+        # ---------------------------------------------------------
+
+        await db.shifts.insert_one(
+            record
+        )
+
+        # ---------------------------------------------------------
+        # Return API response
+        # ---------------------------------------------------------
+
+        return normalize_shift(
+            record,
+            employee
+        )
+
+    # ----------------------------------------------------------------------
+    # UPDATE SHIFT STATUS
+    # ----------------------------------------------------------------------
+
+    @staticmethod
+    async def update_status(
+        shift_id: str,
+        update: ShiftStatusUpdate
+    ) -> Optional[Dict[str, Any]]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        new_status = update.status
+
+        # ---------------------------------------------------------
+        # Keep both fields synchronized
+        # ---------------------------------------------------------
+
+        approved = (
+            new_status == "Approved"
+        )
+
+        result = await db.shifts.find_one_and_update(
+            {
+                "ShiftID": shift_id
+            },
+            {
+                "$set": {
+                    "ShiftSwapStatus": new_status,
+                    "ShiftSwapApproved": approved
+                }
+            },
+            return_document=True,
+            projection={
+                "_id": 0
+            }
+        )
+
+        if not result:
+            return None
+
+        # ---------------------------------------------------------
+        # Employee enrichment
+        # ---------------------------------------------------------
+
+        employee = None
+
+        emp_id = result.get(
+            "EmpID"
+        )
+
+        if emp_id:
+
+            employee = await EmployeeService.get_by_id(
+                emp_id
+            )
+
+        return normalize_shift(
+            result,
+            employee
+        )
+
+
+# ==========================================================================
+# 5. Timesheet Service
+# ==========================================================================
+
+class TimesheetService:
+
+    @staticmethod
+    async def get_all(
+        emp_id: Optional[str] = None,
+        page: int = 1,
+        size: int = 50
+    ) -> List[Dict[str, Any]]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        # ---------------------------------------------------------
+        # Build query using ACTUAL MongoDB field names
+        # ---------------------------------------------------------
+
+        query: Dict[str, Any] = {}
+
+        if emp_id:
+            query["EmpID"] = emp_id
+
+        # ---------------------------------------------------------
+        # Pagination
+        # ---------------------------------------------------------
+        skip = (page - 1) * size
+
+        cursor = db.timesheets.find(
+            query,
+            {"_id": 0}
+        ).skip(skip).limit(size)
+
+        items = await cursor.to_list(
+            length=size
+        )
+
+        # ---------------------------------------------------------
+        # Convert MongoDB documents to API format
+        # ---------------------------------------------------------
+
+        return [
+            normalize_timesheet(item)
+            for item in items
+        ]
+
+    @staticmethod
+    async def submit(
+        timesheet: TimesheetBase
+    ) -> Dict[str, Any]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        if not timesheet.empId or not str(timesheet.empId).strip():
+            raise ValueError("Invalid employee ID.")
+
+        data = {
+            "EmpID": timesheet.empId,
+            "Date": timesheet.date,
+            "Project": timesheet.projectName,
+            "HoursWorked": timesheet.hoursLogged,
+            "ClientBillingHours": timesheet.clientBillingHours,
+            "Status": timesheet.status or "Pending",
+        }
+
+        await db.timesheets.insert_one(data)
+        return normalize_timesheet(data)
+
+    @staticmethod
+    async def update_status(
+        timesheet_id: str,
+        new_status: str
+    ) -> Optional[Dict[str, Any]]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        query: Dict[str, Any] = {"_id": timesheet_id}
+        try:
+            from bson import ObjectId
+            query = {"_id": ObjectId(timesheet_id)}
+        except Exception:
+            query = {"id": timesheet_id}
+
+        result = await db.timesheets.find_one_and_update(
+            query,
+            {
+                "$set": {
+                    "Status": new_status
+                }
+            },
+            return_document=True
+        )
+
+        if result:
+            return normalize_timesheet(result)
+
+        return None
+
+
+# ==========================================================================
+# 6. Payroll Service
+# ==========================================================================
+
+class PayrollService:
+
+    @staticmethod
+    async def get_all(
+        month: Optional[str] = None,
+        page: int = 1,
+        size: int = 50
+    ) -> List[Dict[str, Any]]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        # ---------------------------------------------------------
+        # Build query using ACTUAL MongoDB field names
+        # ---------------------------------------------------------
+
+        query: Dict[str, Any] = {}
+
+        if month:
+            query["PayrollMonth"] = {
+                "$regex": f"^{month}$",
+                "$options": "i"
+            }
+
+        # ---------------------------------------------------------
+        # Pagination
+        # ---------------------------------------------------------
+        skip = (page - 1) * size
+
+        cursor = db.payroll.find(
+            query,
+            {"_id": 0}
+        ).skip(skip).limit(size)
+
+        items = await cursor.to_list(
+            length=size
+        )
+
+        # ---------------------------------------------------------
+        # Convert MongoDB documents to API format
+        # ---------------------------------------------------------
+
+        return [
+            normalize_payroll(item)
+            for item in items
+        ]
+
+    @staticmethod
+    async def sum_net_salary_for_month(month: Optional[str] = None) -> float:
+        """Return the total NetSalary for the provided PayrollMonth. If month is None, sum across all documents."""
+        db = get_database()
+        if db is None:
+            raise RuntimeError("MongoDB database is not connected.")
+
+        match_stage = { }
+        if month:
+            match_stage = {"$match": {"PayrollMonth": {"$regex": f"^{month}$", "$options": "i"}}}
+
+        pipeline = []
+        if match_stage:
+            pipeline.append(match_stage)
+
+        pipeline.append({
+            "$group": {
+                "_id": None,
+                "total": {"$sum": {"$ifNull": ["$NetSalary", 0]}}
+            }
+        })
+
+        cursor = db.payroll.aggregate(pipeline)
+        result = await cursor.to_list(length=1)
+        if result:
+            return float(result[0].get("total", 0.0) or 0.0)
+        return 0.0
+
+    @staticmethod
+    async def calculate(
+        month: str = "2023-05"
+    ) -> List[Dict[str, Any]]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        query = {}
+        if month:
+            query["PayrollMonth"] = {"$regex": f"^{month}$", "$options": "i"}
+
+        items = await db.payroll.find(query, {"_id": 0}).to_list(length=5000)
+        return [normalize_payroll(item) for item in items]
+
+    @staticmethod
+    async def disburse(
+        payroll_id: str
+    ) -> Optional[Dict[str, Any]]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        result = await db.payroll.find_one({"_id": payroll_id})
+        if not result:
+            result = await db.payroll.find_one({"id": payroll_id})
+
+        if result:
+            return normalize_payroll(result)
+
+        return None
+
+
+# ==========================================================================
+# 7. Performance Service
+# ==========================================================================
+
+class PerformanceService:
+
+    @staticmethod
+    async def create(
+        data: PerformanceBase
+    ) -> Dict[str, Any]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        # ---------------------------------------------------------
+        # Check if performance record already exists
+        # ---------------------------------------------------------
+
+        existing = await db.performance.find_one(
+            {"EmpID": data.empId}
+        )
+
+        if existing:
+            raise ValueError(
+                f"Performance record for employee "
+                f"'{data.empId}' already exists."
+            )
+
+        # ---------------------------------------------------------
+        # Convert API fields to MongoDB fields
+        #
+        # MongoDB dataset uses:
+        # EmpID
+        # KPI
+        # GoalCompletion
+        # ProductivityScore
+        # PerformanceRating
+        # ReviewDate
+        #
+        # ---------------------------------------------------------
+
+        doc = {
+            "EmpID": data.empId,
+            "KPI": data.performanceScore,
+            "GoalCompletion": data.kpiCompletionRate,
+            "ProductivityScore": data.productivityScore,
+            "PerformanceRating": (
+                5
+                if data.performanceScore >= 90
+                else 4
+                if data.performanceScore >= 75
+                else 3
+                if data.performanceScore >= 60
+                else 2
+                if data.performanceScore >= 40
+                else 1
+            ),
+            "ReviewDate": datetime.now().strftime(
+                "%Y-%m-%d"
+            )
+        }
+
+        await db.performance.insert_one(doc)
+
+        return normalize_performance(doc)
+
+    @staticmethod
+    async def get_all() -> List[Dict[str, Any]]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        cursor = db.performance.find(
+            {},
+            {"_id": 0}
+        )
+
+        items = await cursor.to_list(
+            length=None
+        )
+
+        return [
+            normalize_performance(item)
+            for item in items
+        ]
+
+    @staticmethod
+    async def get_by_emp_id(
+        emp_id: str
+    ) -> Optional[Dict[str, Any]]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        # IMPORTANT:
+        # MongoDB uses EmpID, not empId.
+
+        result = await db.performance.find_one(
+            {
+                "EmpID": emp_id
+            },
+            {"_id": 0}
+        )
+
+        if result:
+            return normalize_performance(result)
+
+        return None
+
+    @staticmethod
+    async def update(
+        emp_id: str,
+        data: PerformanceUpdate
+    ) -> Optional[Dict[str, Any]]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        # ---------------------------------------------------------
+        # Convert API field names to MongoDB field names
+        # ---------------------------------------------------------
+
+        update_fields: Dict[str, Any] = {}
+
+        if data.performanceScore is not None:
+            update_fields["KPI"] = data.performanceScore
+
+        if data.kpiCompletionRate is not None:
+            update_fields["GoalCompletion"] = (
+                data.kpiCompletionRate
+            )
+
+        if data.productivityScore is not None:
+            update_fields["ProductivityScore"] = (
+                data.productivityScore
+            )
+
+        # ---------------------------------------------------------
+        # PerformanceRating is not directly exposed in
+        # PerformanceUpdate, so it is derived from
+        # performanceScore if performanceScore is updated.
+        # ---------------------------------------------------------
+
+        if data.performanceScore is not None:
+
+            score = data.performanceScore
+
+            if score >= 90:
+                rating = 5
+            elif score >= 75:
+                rating = 4
+            elif score >= 60:
+                rating = 3
+            elif score >= 40:
+                rating = 2
+            else:
+                rating = 1
+
+            update_fields["PerformanceRating"] = rating
+
+        if not update_fields:
+            return await PerformanceService.get_by_emp_id(
+                emp_id
+            )
+
+        # ---------------------------------------------------------
+        # Update actual MongoDB fields
+        # ---------------------------------------------------------
+
+        result = await db.performance.find_one_and_update(
+            {
+                "EmpID": emp_id
+            },
+            {
+                "$set": update_fields
+            },
+            return_document=True,
+            projection={"_id": 0}
+        )
+
+        if result:
+            return normalize_performance(result)
+
+        return None
+
+    @staticmethod
+    async def delete(
+        emp_id: str
+    ) -> bool:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        result = await db.performance.delete_one(
+            {
+                "EmpID": emp_id
+            }
+        )
+
+        return result.deleted_count > 0
+
+# ==========================================================================
+# 8. Notification Service
+# ==========================================================================
+
+class NotificationService:
+
+    @staticmethod
+    async def create(
+        data: NotificationCreate
+    ) -> Dict[str, Any]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        notification = {
+            "Type": data.type or "System",
+            "Message": data.message or data.title or "Notification",
+            "Status": data.status or "Unread",
+            "NotificationDate": datetime.now().strftime("%Y-%m-%d")
+        }
+
+        if data.empId:
+            notification["EmpID"] = data.empId
+
+        await db.notifications.insert_one(notification)
+
+        return normalize_notification(notification)
+
+    @staticmethod
+    async def get_all(page: int = 1, size: int = 50) -> List[Dict[str, Any]]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        skip = (page - 1) * size
+
+        # Include MongoDB _id so we can synthesize a stable API id, but only return the specific fields we need
+        cursor = db.notifications.find(
+            {},
+            {"_id": 1, "EmpID": 1, "Type": 1, "Message": 1, "Status": 1, "NotificationDate": 1, "priority": 1}
+        ).skip(skip).limit(size)
+
+        items = await cursor.to_list(
+            length=size
+        )
+
+        return [
+            normalize_notification(item)
+            for item in items
+        ]
+
+    @staticmethod
+    async def mark_read(
+        notif_id: str
+    ) -> bool:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        # ---------------------------------------------------------
+        # New notifications have an explicit id.
+        #
+        # Existing raw records may not have an id, so the
+        # normalizer generates one from EmpID + timestamp.
+        # ---------------------------------------------------------
+
+        # Build a list of OR clauses that support multiple identifier styles:
+        # 1) explicit 'id' field stored in MongoDB
+        # 2) synthetic NOTIF-<EmpID>-<NotificationDate> identifier (existing behavior)
+        # 3) MongoDB ObjectId match using the returned stringified _id
+        # 4) Fallback match for when _id is stored as a plain string in MongoDB
+        or_clauses = [
+            {"id": notif_id},
+            {
+                "$expr": {
+                    "$eq": [
+                        {
+                            "$concat": [
+                                "NOTIF-",
+                                "$EmpID",
+                                "-",
+                                "$NotificationDate"
+                            ]
+                        },
+                        notif_id
+                    ]
+                }
+            },
+            {"_id": notif_id}
+        ]
+
+        # If notif_id looks like a MongoDB ObjectId, try to match by _id as well.
+        try:
+            from bson import ObjectId
+            oid = ObjectId(notif_id)
+            or_clauses.insert(0, {"_id": oid})
+        except Exception:
+            # Not an ObjectId string — ignore
+            pass
+
+        result = await db.notifications.update_one(
+            {
+                "$or": or_clauses
+            },
+            {
+                "$set": {
+                    "Status": "Read",
+                    "isRead": True
+                }
+            }
+        )
+
+        return (
+            result.modified_count > 0
+            or result.matched_count > 0
+        )
+
+    @staticmethod
+    async def mark_all_read() -> bool:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        # ---------------------------------------------------------
+        # Update the RAW MongoDB field.
+        #
+        # Existing records use:
+        # Status = "Read" / "Unread"
+        # ---------------------------------------------------------
+
+        await db.notifications.update_many(
+            {},
+            {
+                "$set": {
+                    "Status": "Read",
+                    "isRead": True
+                }
+            }
+        )
+
+        return True
+
+
+# ==========================================================================
+# 9. Audit Service
+# ==========================================================================
+
+class AuditService:
+
+    @staticmethod
+    async def get_all() -> List[Dict[str, Any]]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        cursor = db.audit_logs.find(
+            {},
+            {"_id": 0}
+        )
+
+        items = await cursor.to_list(
+            length=None
+        )
+
+        return [
+            normalize_audit_log(item)
+            for item in items
+        ]
+
+    @staticmethod
+    async def create(
+        data: AuditLogCreate
+    ) -> Dict[str, Any]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        # ---------------------------------------------------------
+        # Audit collection already uses API-friendly field names:
+        #
+        # actor
+        # action
+        # module
+        # ipAddress
+        # status
+        # id
+        # timestamp
+        #
+        # Therefore no raw-field conversion is required.
+        # ---------------------------------------------------------
+
+        doc = data.model_dump()
+
+        # ---------------------------------------------------------
+        # Generate unique audit log ID
+        # ---------------------------------------------------------
+
+        doc["id"] = (
+            f"AUD-"
+            f"{uuid.uuid4().hex[:6].upper()}"
+        )
+
+        # ---------------------------------------------------------
+        # Generate timestamp
+        # ---------------------------------------------------------
+
+        doc["timestamp"] = datetime.now().isoformat()
+
+        # ---------------------------------------------------------
+        # Insert into MongoDB
+        # ---------------------------------------------------------
+
+        await db.audit_logs.insert_one(doc)
+
+        return normalize_audit_log(doc)
+
+# ==========================================================================
+# 10. AI Prediction Service
+# ==========================================================================
+
+class AIPredictionService:
+    @staticmethod
+    async def count_attrition_above(threshold: float = 0.7) -> int:
+        db = get_database()
+        if db is None:
+            raise RuntimeError("MongoDB database is not connected.")
+        return await db.ai_predictions.count_documents({"AttritionRisk": {"$gt": threshold}})
+
+
+    @staticmethod
+    async def get_all(
+        emp_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        query: Dict[str, Any] = {}
+
+        # ---------------------------------------------------------
+        # Filter by employee
+        # ---------------------------------------------------------
+
+        if emp_id:
+            query["EmpID"] = emp_id
+
+        # ---------------------------------------------------------
+        # Read AI prediction records
+        # ---------------------------------------------------------
+
+        cursor = db.ai_predictions.find(
+            query,
+            {"_id": 0}
+        )
+
+        items = await cursor.to_list(
+            length=None
+        )
+
+        return [
+            normalize_ai_prediction(item)
+            for item in items
+        ]
+
+    @staticmethod
+    async def get_by_emp_id(
+        emp_id: str
+    ) -> Optional[Dict[str, Any]]:
+
+        db = get_database()
+
+        if db is None:
+            raise RuntimeError(
+                "MongoDB database is not connected."
+            )
+
+        prediction = await db.ai_predictions.find_one(
+            {
+                "EmpID": emp_id
+            },
+            {
+                "_id": 0
+            }
+        )
+
+        if prediction:
+            return normalize_ai_prediction(
+                prediction
+            )
+
+        return None

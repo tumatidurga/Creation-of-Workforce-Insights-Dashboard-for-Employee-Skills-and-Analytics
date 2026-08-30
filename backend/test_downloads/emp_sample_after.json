@@ -1,0 +1,39 @@
+﻿{
+    "items":  [
+                  {
+                      "empId":  "EMP000001",
+                      "firstName":  "Aarav",
+                      "lastName":  "A. Sharma",
+                      "email":  "aarav.sharma.1@company.com",
+                      "phone":  "9000000001",
+                      "avatar":  null,
+                      "gender":  "Non-Binary",
+                      "age":  34,
+                      "department":  "IT",
+                      "jobRole":  "System Administrator",
+                      "designation":  "System Administrator",
+                      "jobLevel":  1,
+                      "managerId":  "EMP007110",
+                      "managerName":  null,
+                      "location":  "Pune",
+                      "status":  "Exited",
+                      "monthlyIncome":  24000.0,
+                      "yearsAtCompany":  4.1,
+                      "yearsInRole":  null,
+                      "yearsWithManager":  2.0,
+                      "workLifeBalanceScore":  2,
+                      "jobSatisfactionScore":  4,
+                      "environmentSatisfactionScore":  3,
+                      "relationshipSatisfactionScore":  3,
+                      "skills":  null,
+                      "education":  "3",
+                      "educationField":  "Information Technology",
+                      "emergencyContact":  null,
+                      "address":  null
+                  }
+              ],
+    "total":  10000,
+    "page":  1,
+    "size":  1,
+    "pages":  10000
+}

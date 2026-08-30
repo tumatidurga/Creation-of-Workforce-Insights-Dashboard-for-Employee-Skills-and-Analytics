@@ -1,0 +1,7 @@
+﻿{
+    "status":  "online",
+    "system":  "AI Workforce Management Automation System",
+    "version":  "1.0.0",
+    "framework":  "FastAPI (Python 3.11+)",
+    "database":  "MongoDB Motor Async Driver"
+}
